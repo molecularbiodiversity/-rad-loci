@@ -1,0 +1,610 @@
+#!/bin/bash
+
+#################################################################################
+# Copyright (c) 2016, Molecular Biodiversity Lab, and
+#                     Andrew Robinson
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice, this
+#   list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of rad-loci nor the names of its
+#   contributors may be used to endorse or promote products derived from
+#   this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#################################################################################
+
+###########
+## NOTES ##
+###########
+#
+# There are ten steps to this pipeline as follows:
+#  0: Create the catalog of potential loci and prepare samples for analysis
+#     Catalog is skipped if a file called ${CATALOG_NAME}_${MIN_SEQ_GLOBAL_OCCURS}.fa already exists
+#  1: Merge (cluster) similar sequences from catalog
+#  2: Filter clusters to those that have 2 to 4 different members (<2 = non-informative, >4 = multi-mapping)
+#  3: Align sequences to filtered catalog (to find the which alleles map to each)
+#  4: Refilter catalog to those that contain 2 to 4 alleles
+#  5: Make database of all allele sequences (FastA)
+#  6: Map sequences from each sample (100% identity) to allele database and count copies
+#  7: Merge counts from each sample into single TSV file
+#  8: Filter Loci based on: (1) Max 2 alleles per sample per loci 
+#                           (2) Min 2 significant alleles and 
+#                           (3) Min proportion of samples with data for loci
+#  9: Call genotype for each sample and output as a structure (.stru) file
+#
+
+##############
+## SETTINGS ##
+##############
+
+## load settings ##
+# defaults
+DEFSETTINGS=$(dirname $0)/../share/rad-loci/settings.default
+if [ -f $DEFSETTINGS ]; then
+	source $DEFSETTINGS
+else
+	echo "ERROR: Unable to locate default settings file"
+	echo "       It should be at: $DEFSETTINGS"
+	exit 1
+fi
+
+# local override
+if [ -f settings.conf ]; then
+	source settings.conf
+else
+	echo "WARNING: Unable to find local settings file"
+	echo "         run 'rad-loci-settings' to create one"
+fi
+
+## Auto correct settings vars ##
+
+if [ -n "$SLURM_CPUS_ON_NODE" ] && [ "$THREADS" -eq "0" ]; then
+	THREADS=$SLURM_CPUS_ON_NODE
+	echo "Automagically switching to $THREADS threads"
+fi
+
+if [ -n "$SCRIPT_DIR" ] && [[ "$SCRIPT_DIR" != */ ]]; then
+	SCRIPT_DIR="$SCRIPT_DIR/"
+fi
+
+
+##############################
+## Step 0: prepare database ##
+# - Filters sample filenames to those containing fasta or fastq sequences (optionally with gz and bz2 compression)
+# - Coverts fastq to fasta files
+# - Creates a catalog of sequences with X occurrences across all samples
+
+echo "---------------"
+echo "Step 0: $(date)"
+echo "---------------"
+
+S0_OUTPUT=${CATALOG_NAME}_cnt$MIN_SEQ_GLOBAL_OCCURS
+
+# check for fasta or fastq
+SAMPLES_FA=""
+SAMPLES_FQ=""
+for inFile in $SAMPLES; do
+	if [[ "$inFile" =~ \.f(ast)?q((\.gz)|(\.bz2))?$ ]]; then # .fq .fastq .fq.gz .fastq.gz .fq.bz2 .fastq.bz2
+		SAMPLES_FQ="${SAMPLES_FQ} ${inFile}"
+	elif [[ "$inFile" =~ \.f(ast)?a((\.gz)|(\.bz2))?$ ]]; then # .fa .fasta .fa.gz .fasta.gz .fa.bz2 .fasta.bz2
+		SAMPLES_FA="${SAMPLES_FA} ${inFile}"
+	else
+		echo "Skipping unsupported file type: $inFile"
+	fi
+done
+
+# extract or symlink the fasta files
+for inFile in $SAMPLES_FA; do
+	CATPROG=""
+	outFile=${FASTA_SAMPLE_DIR}/$(basename ${inFile})
+	if [[ "$inFile" =~ \.bz2$ ]]; then
+                CATPROG=bzcat
+                outFile=${outFile%.bz2}
+        elif [[ "$inFile" =~ \.gz$ ]]; then
+                CATPROG=zcat
+                outFile=${outFile%.gz}
+        fi
+	outFile=${outFile%.fasta}
+	outFile=${outFile%.fa}.fa
+
+	if [ -z "$CATPROG" ]; then
+		ln -s $(cd $(dirname $inFile); pwd)/$(basename $inFile) $outFile
+		echo "Linking: $outFile"
+	else
+		$CATPROG $inFile > $outFile
+	fi
+	SAMPLES_PROC="$SAMPLES_PROC $outFile";
+done
+
+
+# convert fastq's to fasta
+echo "Converting FastQ to FastA (if needed): $(date)"
+mkdir -p $FASTA_SAMPLE_DIR
+CATPROGS=""
+IN_FILES=""
+OUT_FILES=""
+for inFile in $SAMPLES_FQ; do
+	CATPROG=cat
+	outFile=${FASTA_SAMPLE_DIR}/$(basename ${inFile})
+	if [[ "$inFile" =~ \.bz2$ ]]; then
+		CATPROG=bzcat
+		outFile=${outFile%.bz2}
+	elif [[ "$inFile" =~ \.gz$ ]]; then
+		CATPROG=zcat
+		outFile=${outFile%.gz}
+	fi
+	outFile=${outFile%.fastq}
+	outFile=${outFile%.fq}.fa
+
+	#FASTA_OPTS="${FASTA_OPTS} ${CATPROG} ${inFile} ${outFile}"
+	CATPROGS="${CATPROGS} ${CATPROG}"
+	IN_FILES="${IN_FILES} ${inFile}"
+	OUT_FILES="${OUT_FILES} ${outFile}"
+
+	# add fa file to list of files to process
+	SAMPLES_PROC="$SAMPLES_PROC $outFile";
+done
+
+CMD="if [ ! -e {3} ]; then
+		echo \"- Creating: {3}\";
+		{1} {2} | paste - - - - | sed 's/^@/>/' | awk -F\"\t\" '{print \$1\"\n\"\$2}' > {3};
+	else
+		echo \"- Skipping: {3}, already exists\";
+	fi"
+
+parallel -j $THREADS --xapply $CMD ::: $CATPROGS ::: $IN_FILES ::: $OUT_FILES
+
+
+# create catalog of sequences
+# sort samples
+if [ ! -e ${S0_OUTPUT}.fa ]; then
+	echo "Sort/Count sequences per sample: $(date)"
+	mkdir -p ${COUNT_SAMPLE_DIR}
+
+	# make per-sample counts
+	CMD="outFile=${COUNT_SAMPLE_DIR}/\$(basename {1})
+CATPROG=cat; 
+if [[ \"\$outFile\" =~ \.bz2$ ]]; then 
+	CATPROG=bzcat; 
+	outFile=\${outFile%.bz2}; 
+elif [[ \"\$outFile\" =~ \.gz$ ]]; then 
+	CATPROG=zcat; 
+	outFile=\${outFile%.gz}; 
+fi;
+outFile=\${outFile%.fasta}; 
+outFile=\${outFile%.fa}.count;
+if [ ! -e \$outFile ]; then 
+	echo \"- Creating: \$outFile\"; 
+	\$CATPROG {1} | paste - - | awk -F\"\t\" '{print \$2}' | sort | uniq -c > \$outFile; 
+else 
+	echo \"- Skipping: \$outFile, already exists\"; 
+fi;"
+
+	parallel -j $THREADS $CMD ::: $SAMPLES_PROC
+
+
+	# merge samples counts
+	echo "Merge counts/filter minimum occurrences: $(date)"
+	sort -k2,2 -m ${COUNT_SAMPLE_DIR}/*.count \
+	| awk 'BEGIN{i=1; c=0; lseq=""} 
+	  {if (lseq!=$2 && lseq!="") {if (c>='$MIN_SEQ_GLOBAL_OCCURS') {print ">"i"_"c"\n"lseq; i++} c=0} c+=$1; lseq=$2} 
+	  END {if (c>='$MIN_SEQ_GLOBAL_OCCURS') {print ">"i"_"c"\n"lseq;}}' \
+	> ${S0_OUTPUT}.fa
+
+	# cleanup
+	#rm ${COUNT_SAMPLE_DIR}/*.count
+else
+	echo "Skipping catalog creation, ${S0_OUTPUT}.fa already exists"
+fi
+
+S0_COUNT=$(($(cat ${S0_OUTPUT}.fa | wc -l)/2))
+
+
+#####################
+## Step 1: cluster ##
+# vsearch: cluster input sequences
+
+echo "---------------"
+echo "Step 1: $(date)"
+echo "---------------"
+
+S1_OUTPUT=${S0_OUTPUT}_cl$CLUST_IDENTITY
+
+# pipeline #
+if [ ! -e ${S1_OUTPUT}.fa ]; then
+	echo "Creating ${S1_OUTPUT}.fa"
+	vsearch --threads ${THREADS}\
+		--cluster_size ${S0_OUTPUT}.fa  \
+		--id 0.$CLUST_IDENTITY \
+		--sizeout \
+		--usersort \
+		--fasta_width 0 \
+		--centroids ${S1_OUTPUT}.fa
+else
+	echo "Skipping ${S1_OUTPUT}.fa, already exists"
+fi
+
+S1_COUNT=$(($(cat ${S1_OUTPUT}.fa | wc -l)/2))
+
+
+
+####################
+## Step 2: filter ##
+# sed: put the size number at start of ID line
+# paste: put sequence line after ID line
+# awk: filter targets with desired members (and return to fasta format)
+
+echo "---------------"
+echo "Step 2: $(date)"
+echo "---------------"
+
+S2_OUTPUT=${S1_OUTPUT}_s${MIN_MEMBERS}-${MAX_MEMBERS}
+
+# pipeline #
+if [ ! -e ${S2_OUTPUT}.fa ]; then
+	echo "Creating ${S2_OUTPUT}.fa"
+	sed 's/^\(.*\);size=\([0-9]*\)\(.*\);$/\2\t\1_\2 \3/g' ${S1_OUTPUT}.fa \
+	| paste - - \
+	| awk -F"\t" '$1 >= '$MIN_MEMBERS' && $1 <= '$MAX_MEMBERS' {print $2"\n"$3}' \
+	   > ${S2_OUTPUT}.fa
+else
+	echo "Skipping ${S2_OUTPUT}.fa, already exists"
+fi
+
+S2_COUNT=$(($(cat ${S2_OUTPUT}.fa | wc -l)/2))
+
+
+###################
+## Step 3: align ##
+# vsearch: align input to centroids
+
+echo "---------------"
+echo "Step 3: $(date)"
+echo "---------------"
+
+S3_OUTPUT=${S2_OUTPUT}_aln${ALIGN_IDENTITY}
+
+if [ ! -e ${S3_OUTPUT}.aln ] || [ ! -e ${S3_OUTPUT}.match ]; then
+	echo "Creating ${S3_OUTPUT}.aln and ${S3_OUTPUT}.match"
+	vsearch --threads ${THREADS} \
+	  --usearch_global ${S0_OUTPUT}.fa \
+	  --db ${S2_OUTPUT}.fa \
+	  --id 0.${ALIGN_IDENTITY}  \
+	  --sizeout  \
+	  --fasta_width 0 \
+	  --alnout  ${S3_OUTPUT}.aln \
+	  --dbmatched ${S3_OUTPUT}.match \
+	  --rowlen $(($SEQ_LEN+5)) \
+	  --mincols $(($SEQ_LEN-1))
+	#  --fastapairs ${S3_OUTPUT}.fap
+else
+	echo "Skipping ${S3_OUTPUT}.aln and ${S3_OUTPUT}.match, already exists"
+fi
+
+S3_COUNT=$(($(cat ${S3_OUTPUT}.match | wc -l)/2))
+
+
+######################
+## Step 4: refilter ##
+
+# 4a
+# grep: only show target lines
+# sort: sort targets
+# uniq: count how many of each target
+# awk: filter to required number of members
+# sed: split off membership number from clustering step
+# awk: filter loci where membership size changed (and only print id)
+
+echo "---------------"
+echo "Step 4: $(date)"
+echo "---------------"
+
+S4_OUTPUT=${S3_OUTPUT}_s${MIN_MEMBERS}-${MAX_MEMBERS}
+
+if [ ! -e ${S4_OUTPUT}.id ]; then
+	echo "Creating ${S4_OUTPUT}.id"
+	grep "^Target" ${S3_OUTPUT}.aln \
+	| sort \
+	| uniq -c \
+	| awk '$1 >= '$MIN_MEMBERS' && $1 <= '$MAX_MEMBERS \
+	| sed 's/_\([0-9]\)*$/ \1/' \
+	| awk '$1 == $5 {print $4}' > \
+	    ${S4_OUTPUT}.id
+else
+	echo "Skipping ${S4_OUTPUT}.id, already exists"
+fi
+
+S4A_COUNT=$(cat ${S4_OUTPUT}.id | wc -l)
+
+#4b
+#create fasta from .id file
+# seq-filter: output only select sequences (those in id file)
+
+if [ ! -e ${S4_OUTPUT}.fa ]; then
+	echo "Creating ${S4_OUTPUT}.fa"
+	${SCRIPT_DIR}seq-filter ${S4_OUTPUT}.id ${S0_OUTPUT}.fa > ${S4_OUTPUT}.fa
+else
+	echo "Skipping ${S4_OUTPUT}.fa, already exists"
+fi
+
+S4B_COUNT=$(($(cat ${S4_OUTPUT}.fa | wc -l)/2))
+
+
+############################
+## Step 5: make allele DB ##
+# grep: find query/target lines
+# grep: remove match separator
+# paste: 2 to 1 line format
+# awk: trim required columns
+
+echo "---------------"
+echo "Step 5: $(date)"
+echo "---------------"
+
+S5_OUTPUT=${S4_OUTPUT}_al
+
+#5a
+if [ ! -e ${S5_OUTPUT}.map ]; then
+	echo "Creating ${S5_OUTPUT}.map"
+	${SCRIPT_DIR}seq-filter ${S4_OUTPUT}.id \
+		<(grep "^ Query" ${S3_OUTPUT}.aln -A1 \
+			| grep -v "\-\-" \
+			| paste - - \
+			| awk '{print $6" "$3}' \
+			| sed 's/\(>[0-9]*_[0-9]*\).* >/\1 >/') \
+	> ${S5_OUTPUT}.map
+else
+	echo "Skipping ${S5_OUTPUT}.map, already exists"
+fi
+
+S5A_COUNT=$(cat ${S5_OUTPUT}.map | wc -l)
+
+#5b
+# seq-filter: output only select sequences (queries whose target is within step 4 set)
+#  awk (subprocess): print the query id
+
+if [ ! -e ${S5_OUTPUT}.fa ]; then
+	echo "Creating ${S5_OUTPUT}.fa"
+	${SCRIPT_DIR}seq-filter <(awk '{print $2}' ${S5_OUTPUT}.map) ${S0_OUTPUT}.fa \
+	> ${S5_OUTPUT}.fa
+else
+	echo "Skipping ${S5_OUTPUT}.fa, already exists"
+fi
+
+S5B_COUNT=$(($(cat ${S5_OUTPUT}.fa | wc -l)/2))
+
+
+########################################
+## Step 6: Count Target2's per sample ##
+#For each sample
+ # vsearch align 100%
+ # count sequences for each target2
+ # write to table (samples per column)
+
+S6_OUTPUT_DIR=${S5_OUTPUT}_aln
+
+mkdir -p $S6_OUTPUT_DIR
+
+S6_STATS=""
+for SAMPLEFILENAME in $SAMPLES; do
+	S6_OUTPUT=$(basename ${SAMPLEFILENAME%.*})
+
+	echo "---------------"
+	echo "Step 6 '${S6_OUTPUT}': $(date)"
+	echo "---------------"
+
+	S6B_COUNT=0
+	if [ ! -e ${S6_OUTPUT_DIR}/${S6_OUTPUT}.count ]; then
+	
+		# vsearch: align reads to catalog of alleles
+		if [ ! -e ${S6_OUTPUT_DIR}/${S6_OUTPUT}.aln ]; then
+			echo "Creating ${S6_OUTPUT_DIR}/${S6_OUTPUT}.aln"
+			vsearch --threads ${THREADS} \
+				--usearch_global ${FASTA_SAMPLE_DIR}/${S6_OUTPUT}.fa \
+				--db ${S5_OUTPUT}.fa \
+				--id 1.0 \
+				--sizeout \
+				--alnout ${S6_OUTPUT_DIR}/${S6_OUTPUT}.aln \
+				--rowlen $(($SEQ_LEN+5)) \
+				--mincols ${SEQ_LEN}
+		else
+			echo "Skipping ${S6_OUTPUT_DIR}/${S6_OUTPUT}.aln, already exists"
+		fi
+
+		S6B_COUNT=$(grep "^ Query" ${S6_OUTPUT_DIR}/${S6_OUTPUT}.aln | wc -l)
+
+		# count alleles
+		echo "Creating ${S6_OUTPUT_DIR}/${S6_OUTPUT}.count"
+		grep "^Target" ${S6_OUTPUT_DIR}/${S6_OUTPUT}.aln \
+			| awk '{print $3}' \
+			| sort \
+			| uniq -c \
+			  > ${S6_OUTPUT_DIR}/${S6_OUTPUT}.count
+	
+		S6A_COUNT=$(($(cat ${FASTA_SAMPLE_DIR}/${S6_OUTPUT}.fa | wc -l)/2))
+		S6C_COUNT=$(cat ${S6_OUTPUT_DIR}/${S6_OUTPUT}.count | wc -l)
+	
+		S6_STATS="${S6_STATS}\n   - ${S6_OUTPUT}: reads=${S6B_COUNT}/${S6A_COUNT} ($(echo "scale=1;${S6B_COUNT}*100.0/${S6A_COUNT}" | bc)%); alleles=${S6C_COUNT};"
+	else
+		echo "Skipping ${S6_OUTPUT_DIR}/${S6_OUTPUT}.count, already exists"
+	fi
+	
+done
+
+
+##########################
+## Step 7: Merge counts ##
+# combinecounts: merge target1-allele mapping and all the count files
+# split-header: saves first (header) line to file and outputs rest
+# sort: group target1 then target2
+# awk: rearrange columns to 2, allele#, 1, 3, 4 ....
+# sed: remove 2 blank columns
+# cat: re-insert header
+
+echo "---------------"
+echo "Step 7: $(date)"
+echo "---------------"
+
+S7_OUTPUT=${S5_OUTPUT}_merged
+OUTPUT_SAMPLES=${S6_OUTPUT_DIR}/*.count
+IMPORTANT_SAMPLES=$OUTPUT_SAMPLES
+
+if [ $MIN_ALLELES_PER_SAMPLE > 0 ]; then
+
+	S7_OUTPUT=${S5_OUTPUT}_merged$MIN_ALLELES_PER_SAMPLE
+
+	IMPORTANT_SAMPLES=$(wc -l ${OUTPUT_SAMPLES} | grep -v total | awk '$1 >= '$MIN_ALLELES_PER_SAMPLE' {print $2}')
+	
+	if [ $OUTPUT_ALL_SAMPLES == 0 ]; then
+		OUTPUT_SAMPLES=$IMPORTANT_SAMPLES
+	fi
+fi
+
+#echo $IMPORTANT_SAMPLES
+
+if [ ! -e ${S7_OUTPUT}.tsv ]; then
+	echo "Creating ${S7_OUTPUT}.tsv"
+	combinecounts -d " " --VK \
+	 ${S5_OUTPUT}.map \
+	 <(cat ${S5_OUTPUT}.fa | paste - - | awk '{print $2" "$1}') \
+	 ${OUTPUT_SAMPLES} \
+	 <(cat ${S5_OUTPUT}.fa | paste - - | awk '{print $2" "$1}') \
+	| ${SCRIPT_DIR}split-header 1 2> header.tmp \
+	| sort -k2,2 -k1,1 \
+	| awk 'BEGIN{a=1; OFS="\t"} {if (l!=$2)a=1; l=$2; A=$1; $1=$2"\t"a; $2=A; print $0; a++}' \
+	> ${S7_OUTPUT}.tmp
+
+	cat <(awk '{OFS="\t"; $1="Loci\tAllele_No"; $2="Allele_Name"; print $0}' header.tmp) ${S7_OUTPUT}.tmp > ${S7_OUTPUT}.tsv
+
+	# cleanup
+	rm header.tmp ${S7_OUTPUT}.tmp
+else
+	echo "Skipping ${S7_OUTPUT}.tsv, already exists"
+fi
+
+# simplify the sequence
+${SCRIPT_DIR}simplify-seq ${S7_OUTPUT}.tsv > ${S7_OUTPUT}_ss.tsv
+
+S7_COUNT=$(awk '{print $1}' ${S7_OUTPUT}.tsv | sort | uniq | wc -l)
+
+
+
+###########################
+## Step 8: Filter counts ##
+
+echo "---------------"
+echo "Step 8: $(date)"
+echo "---------------"
+
+S8_OUTPUT=${S7_OUTPUT}_ss_mc${MINCOUNT}_ma${MINSAMPLEALLELE}_ml${MINSAMPLELOCI}
+
+# filtering results
+if [ ! -e ${S8_OUTPUT}.tsv ]; then
+	echo "Creating ${S8_OUTPUT}.tsv"
+	${SCRIPT_DIR}filter-counts ${MINCOUNT} ${MINSAMPLEALLELE} ${MINSAMPLELOCI} ${S7_OUTPUT}_ss.tsv ${IMPORTANT_SAMPLES} > ${S8_OUTPUT}.tsv
+else
+	echo "Skipping ${S8_OUTPUT}.tsv, already exists"
+fi
+
+S8_COUNT=$(awk '{print $1}' ${S8_OUTPUT}.tsv | sort | uniq | wc -l)
+
+# removing greater than sign from IDs
+if [ ! -e ${S8_OUTPUT}_ngt.tsv ]; then
+	echo "Creating ${S8_OUTPUT}_ngt.tsv"
+	sed 's/>//g' ${S8_OUTPUT}.tsv > ${S8_OUTPUT}_ngt.tsv
+else
+	echo "Skipping ${S8_OUTPUT}_ngt.tsv, already exists"
+fi
+
+# make loci fasta file
+if [ ! -e ${S8_OUTPUT}_loci.fa ]; then
+	echo "Creating ${S8_OUTPUT}_loci.fa"
+	${SCRIPT_DIR}seq-filter \
+		<(tail -n+2 ${S8_OUTPUT}.tsv \
+			| awk '$1!=l{print $1} {l=$1}') \
+		${S0_OUTPUT}.fa \
+	> ${S8_OUTPUT}_loci.fa
+else
+	echo "Skipping ${S8_OUTPUT}_loci.fa, already exists"
+fi
+
+# make allele fasta file
+if [ ! -e ${S8_OUTPUT}_allele.fa ]; then
+	echo "Creating ${S8_OUTPUT}_allele.fa"
+	tail -n+2 ${S8_OUTPUT}.tsv \
+	| awk '{print $3"\n"$NF}' \
+	> ${S8_OUTPUT}_allele.fa
+else
+	echo "Skipping ${S8_OUTPUT}_allele.fa, already exists"
+fi
+
+
+############################
+## Step 9: Format outputs ##
+
+echo "---------------"
+echo "Step 9: $(date)"
+echo "---------------"
+
+#if [ ! -e ${S8_OUTPUT}.stru ]; then
+#	echo "Creating ${S8_OUTPUT}.stru"
+#	${SCRIPT_DIR}call-structure ${MINCOUNT} ${S8_OUTPUT}.tsv > ${S8_OUTPUT}.stru
+#else
+#	echo "Skipping ${S8_OUTPUT}.stru, already exists"
+#fi
+if [ ! -e ${S8_OUTPUT}_ngt.stru ]; then
+        echo "Creating ${S8_OUTPUT}_ngt.stru"
+	${SCRIPT_DIR}call-structure ${MINCOUNT} ${S8_OUTPUT}_ngt.tsv > ${S8_OUTPUT}_ngt.stru
+else
+	echo "Skipping ${S8_OUTPUT}_ngt.stru, already exists"
+fi
+
+
+#############
+## Summary ##
+echo ""
+echo "[Counts]"
+echo " - Seqs ${MIN_SEQ_GLOBAL_OCCURS}+ copies:         $S0_COUNT"
+echo " - Clusters:                 $S1_COUNT"
+echo " - Clusters of ${MIN_MEMBERS}-${MAX_MEMBERS} members:  $S2_COUNT"
+echo " - Matched Seqs:             $S3_COUNT"
+echo " - Aligned with ${MIN_MEMBERS}-${MAX_MEMBERS} members: $S4A_COUNT ids ($S4B_COUNT seqs)"
+echo " - Total alleles:            ${S5B_COUNT} (from ${S5A_COUNT})"
+if [ -z "$S6_STATS" ]; then
+	echo " - Samples: were not counted as they were pre-existing"
+else
+	echo -e " - Samples:${S6_STATS}"
+fi
+echo " - Loci:                     ${S7_COUNT}"
+echo " - Filtered loci:            ${S8_COUNT}"
+echo ""
+
+echo "[Outputs]"
+echo " - Allele frequency summary:  ${S8_OUTPUT}_ngt.tsv"
+echo " - Allele calls (structure):  ${S8_OUTPUT}_ngt.stru"
+echo " - Allele sequences:          ${S8_OUTPUT}_allele.fa"
+echo " - Loci sequences:            ${S8_OUTPUT}_loci.fa"
+echo ""
+
+echo "Finished: $(date)"
+
+## END ##
+

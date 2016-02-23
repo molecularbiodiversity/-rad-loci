@@ -1,0 +1,162 @@
+#!/usr/bin/env python
+# encoding: utf-8
+'''
+ Randomly selects a subsample of inputfile
+
+@author:     Andrew Robinson
+@copyright:  2016 Andrew Robinson. All rights reserved.
+@license:    BSD
+@contact:    andrew.robinson@latrobe.edu.au
+'''
+
+import sys
+import os
+import random
+
+
+__all__ = []
+__version__ = 0.1
+__date__ = '2016-02-01'
+__updated__ = '2016-02-01'
+
+
+def main(argv=None):
+
+    # arg defaults
+    infiles=[]
+    delim="\t"
+    headerrows=0
+    keep=100
+    
+    # parse args
+    curarg=None
+    for arg in argv[1:]:
+        if curarg is not None:
+            if curarg == "-r":
+                try:
+                    headerrows = int(arg)
+                except:
+                    headerrows = 0
+                    sys.stderr.write("Header rows: '%s' is not an integer\n"%arg)
+                    return 1
+            elif curarg == "-d":
+                delim = arg
+            if curarg == "-k":
+                try:
+                    keep = int(arg)
+                except:
+                    keep = 0
+                    sys.stderr.write("Records to keep: '%s' is not an integer\n"%arg)
+                    return 1
+            curarg = None
+        elif arg in ("-r", "-d", "-k"):
+            curarg=arg
+        else:
+            infiles.append(arg)
+        
+    if len(infiles) == 0:
+        infiles.append("-")
+        
+    # count how many records there are
+    recordCount = 0
+    for f in infiles:
+        if f == "-":
+            #recordCount += countRecords(sys.stdin, headerrows, delim)
+            #TODO: wrap this with a buffered reader object
+            sys.stderr.write("Error: reading from standard-input not currently supported\n")
+            return 2
+        else:
+            with open(f) as fh:
+                recordCount += countRecords(fh, headerrows, delim)
+                
+    # select the record numbers to keep
+    recordNumbers = set(random.sample(range(recordCount), keep))
+    
+    # output selected records
+    recordOffset = 0
+    for f in infiles:
+        if f == "-":
+            #recordCount += countRecords(sys.stdin, headerrows, delim)
+            #TODO: wrap this with a buffered reader object
+            sys.stderr.write("Error: reading from standard-input not currently supported\n")
+            return 2
+        else:
+            with open(f) as fh:
+                recordOffset += outputRecords(fh, recordNumbers, recordOffset, headerrows, delim)
+    
+    return 0
+
+
+def countRecords(f, headerrows, delim):
+    '''Counts the number of records in file-like object'''
+    
+    # skip header row
+    while headerrows > 0:
+        f.readline()
+        headerrows-=1
+
+    lastID = None
+    recordCount = 0
+    for line in f:
+        cols = str(line).rstrip().split(delim,1)
+        if lastID != cols[0]:
+            recordCount += 1
+        lastID = cols[0]
+    
+    return recordCount
+
+
+def outputRecords(f, recordNumbers, recordOffset, headerrows, delim):
+    '''Outputs records that are contained in recordNumbers set'''
+    
+    # skip header row
+    while headerrows > 0:
+        sys.stdout.write(f.readline())
+        headerrows-=1
+    
+    # process the data lines
+    lastID = None
+    lastOffset = recordOffset
+    for line in f:
+        
+        # count record number
+        cols = str(line).rstrip().split(delim,1)
+        if lastID != cols[0]:
+            lastOffset = recordOffset
+            recordOffset += 1
+        
+        # output select lines
+        if lastOffset in recordNumbers:
+            sys.stdout.write(line)
+            
+        # record lastID
+        lastID = cols[0]
+    
+    return recordOffset
+
+def help():
+    '''Prints usage and help information'''
+    
+    sys.stdout.write("usage: random-sample [-h]\n")
+    sys.stdout.write("       random-sample [-d delim] [-r rows] [-k samplesize] infile [infile ...]\n")
+    sys.stdout.write("\n")
+    sys.stdout.write("       -d delim       delimiter to separate the ID column from rest of line. default: '\\t'\n")
+    sys.stdout.write("       -r rows        number of header rows to keep at top of infiles. default: 0\n")
+    sys.stdout.write("       -k samplesize  number of samples to keep afterwards. default: 100\n")
+    sys.stdout.write("\n")
+    sys.stdout.write("  Randomly selects a number of records from input files to keep.  If there are\n")
+    sys.stdout.write("  a number of consecutive lines with the same ID then they are treated as a\n")
+    sys.stdout.write("  single record\n")
+
+
+if __name__ == "__main__":
+    if "-h" in sys.argv or "--help" in sys.argv or len(sys.argv) == 1:
+        help()
+        sys.exit(0)
+    else:
+        sys.exit(main(sys.argv))
+    
+    
+    
+    
+    

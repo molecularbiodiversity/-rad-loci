@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+
+# hides redundant bases on sequence groups
+
+import sys
+
+if len(sys.argv) != 2:
+	sys.stderr.write("usage: simplify-seq TSVFILE\n")
+	sys.exit(1)
+
+
+SEQLINENUM=3
+DELIM="\t"
+
+def processGroup(lines):
+	line1 = lines[0]
+	print DELIM.join(line1)
+	for line in lines[1:]:
+		colapseseq = ""
+		firstseq = line1[SEQLINENUM]
+		thisseq =  line[SEQLINENUM]
+		for i in range(min(len(firstseq),len(thisseq))):
+			if firstseq[i] == thisseq[i]:
+				colapseseq+="-"
+			else:
+				colapseseq+=thisseq[i]
+		line[SEQLINENUM] = colapseseq
+		print DELIM.join(line)
+	# next line
+# end processGroup()
+
+with open(sys.argv[1]) as infile:
+	linecount = 0
+	linebuffer = []
+	lastid=None
+	for line in infile:
+		if linecount == 0:
+			sys.stdout.write(line)
+		else:
+			cols = line.rstrip().split()
+			if cols[0] != lastid and len(linebuffer) > 0:
+				processGroup(linebuffer)
+				linebuffer = []
+
+			linebuffer.append(cols)
+			
+			lastid = cols[0]
+		linecount+=1
+	# next line
+	if len(linebuffer) > 0:
+		processGroup(linebuffer)
+# close()
+

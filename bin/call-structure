@@ -1,0 +1,104 @@
+#!/usr/bin/env python
+
+# converts the TSVFILE into a structure (.stru) file with allele calls
+
+import sys
+
+if len(sys.argv) != 3:
+	sys.stderr.write("usage: call-structure MINCOUNT TSVFILE\n")
+	sys.exit(1)
+
+
+DELIM="\t"
+
+# Columns with sample counts
+RANGEMIN=4
+RANGEMAX=-1
+
+# threshold for noise
+MINCOUNT=int(sys.argv[1])
+
+
+sampleCalls = {} # {SAMPLENAME: [[CALL1, CALL2], ...] ... }
+
+def processTarget(header, alleles):
+	
+	targetName = alleles[0][0]
+	sampleNames = header[RANGEMIN:RANGEMAX]
+	counts = []
+	for allele in alleles:
+		counts.append(allele[RANGEMIN:RANGEMAX])
+	
+	for si in range(len(counts[0])):
+		sample = sampleNames[si]
+		sampleCall = []
+
+		# store seen alleles
+		for ai in range(len(alleles)):
+			alleleNum = alleles[ai][1]
+			ca = counts[ai]
+			count = int(ca[si])
+			if count >= MINCOUNT:
+				sampleCall.append(alleleNum)
+
+		# fix call for missing and single allele call
+		if len(sampleCall) == 0:
+			sampleCall = ['0','0']
+		elif len(sampleCall) == 1:
+			sampleCall = sampleCall*2
+
+		# store the call
+		if sample in sampleCalls:
+			sampleCalls[sample].append(sampleCall)
+		else:
+			sampleCalls[sample] = [sampleCall]
+	# next sample
+# end processTarget()
+
+########################
+## Pass 1: read input ##
+headerline = None
+targets = ['']
+with open(sys.argv[2]) as infile:
+	linebuffer = []
+	lastid=None
+	for line in infile:
+		if headerline is None:
+			headerline = line.rstrip().split(DELIM)
+		else:
+			cols = line.rstrip().split(DELIM)
+			if cols[0] != lastid and len(linebuffer) > 0:
+				targets.append(lastid)
+				processTarget(headerline, linebuffer)
+				linebuffer = []
+
+			linebuffer.append(cols)
+			
+			lastid = cols[0]
+		# endif
+	# next line
+	if len(linebuffer) > 0:
+		targets.append(lastid)
+		processTarget(headerline, linebuffer)
+# close()
+
+## Pass 2: output structure file
+print DELIM.join(targets)
+
+for header in headerline[RANGEMIN:RANGEMAX]:
+	if header in sampleCalls:
+		sample = sampleCalls[header]
+
+		for callNum in range(2):
+			out = [header]
+			for call in sample:
+				out.append(call[callNum])
+			print DELIM.join(out)
+		# next callNum
+	else:
+		print "%s: No Data" % header
+# next sample
+
+
+
+

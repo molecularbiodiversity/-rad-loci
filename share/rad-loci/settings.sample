@@ -1,0 +1,73 @@
+#!/bin/bash
+
+##############
+## SETTINGS ##
+##############
+
+## Common settings (many steps)
+# S0-1, S3 & S6: Number of CPU's to use for programs that support more than 1
+# if you are running this job under SLURM then you can set it to 0 and have it
+# work out how many CPUs to use
+THREADS=8
+
+## Specific settings
+# S0: Catalog name
+CATALOG_NAME=all
+
+# S0: Number of times a sequence must be seen across all sequences combined
+# to use it in the catalog of target sequences
+MIN_SEQ_GLOBAL_OCCURS=100
+
+# S0: list of sample files to process
+SAMPLES=samples/*
+
+# S0: Directory to store fasta versions of fastq files
+# Note: can point to an existing directory contain already converted
+#       FastQ -> FastA files.  In this case it will just use them.
+FASTA_SAMPLE_DIR=fasta
+
+# S0: directory to store per-sample sequence count files
+COUNT_SAMPLE_DIR=$FASTA_SAMPLE_DIR
+
+# S1 & S3: Clustering and Aligning identity percentage
+# used for creating the loci and allele sequences
+CLUST_IDENTITY=94
+ALIGN_IDENTITY=97
+
+# S2 & S4: minimum and maximum number of alleles in each loci
+MIN_MEMBERS=2
+MAX_MEMBERS=16
+
+# S3 & S6: the length of input sequences
+SEQ_LEN=75
+
+# S7: Remove low count samples.
+# i.e. samples with less than X number of matching alleles.
+# set to 0 to keep all samples
+MIN_ALLELES_PER_SAMPLE=20000
+
+# S7: keep all samples in results (even if they are not filted)
+# i.e. with MIN_ALLELES_PER_SAMPLE non-zero then keep the samples
+# in the output but just don't use them in the missing data counts in
+# step 8 filters
+# 1 = On, 0 = Off
+OUTPUT_ALL_SAMPLES=0
+
+## S8 Filters ##
+# S8: Min count to call (also used in Step 9 for calling zygosity)
+# i.e. 2 would treat 1's and if they were 0
+MINCOUNT=2
+
+# S8: minimum proportion of samples each allele must contain to be considered 'significant'
+# a loci must have at least 2 'significant' alleles
+# 0.10 means 10% of samples must have counts for an allele
+MINSAMPLEALLELE=0.10
+
+# S8: minimum proportion of samples that have data for a loci
+# 0.80 mean >=80% data (or <20% missing)
+MINSAMPLELOCI=0.80
+
+##################
+## END SETTINGS ##
+##################
+

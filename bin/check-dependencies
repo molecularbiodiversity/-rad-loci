@@ -1,0 +1,134 @@
+#!/bin/bash
+
+# checks the dependencies are callable for the pipeline
+
+m=0
+o=0
+## 3rd party ##
+echo "Checking 3rd party executables exist:"
+
+echo -n " - awk:            "
+command -v awk || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - basename:       "
+command -v basename || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - bc:             "
+command -v bc || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - bzcat:          "
+command -v bzcat || { echo ">>NOT FOUND, optional (.bz2 format not supported)"; ((o+=1)); };
+
+echo -n " - cat:            "
+command -v cat || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - cd:             "
+command -v cd || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - grep:           "
+command -v grep || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - ln:             "
+command -v ln || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - mkdir:          "
+command -v mkdir || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - parallel:       "
+command -v parallel || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - paste:          "
+command -v paste || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - pwd:            "
+command -v pwd || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - python:         "
+PYTHON_FOUND=1
+p=0
+command -v python || { echo ">>NOT FOUND<<"; ((m+=1)); PYTHON_FOUND=0; };
+if [ $PYTHON_FOUND -eq 1 ]; then
+	echo -n "   - os:             "
+	echo "import os" | python 2>&-
+	if [ $? -eq 0 ]; then echo "OK"; else echo ">>NOT FOUND<<"; ((p+=1)); fi
+
+	echo -n "   - random:         "
+	echo "import random" | python 2>&-
+	if [ $? -eq 0 ]; then echo "OK"; else echo ">>NOT FOUND<<"; ((p+=1)); fi
+	
+	echo -n "   - re:             "
+	echo "import re" | python 2>&-
+	if [ $? -eq 0 ]; then echo "OK"; else echo ">>NOT FOUND<<"; ((p+=1)); fi
+	
+	echo -n "   - sys:            "
+	echo "import sys" | python 2>&-
+	if [ $? -eq 0 ]; then echo "OK"; else echo ">>NOT FOUND<<"; ((p+=1)); fi
+fi
+
+echo -n " - rm:             "
+command -v rm || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - sed:            "
+command -v sed || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - sort:           "
+command -v sort || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - tail:           "
+command -v tail || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - uniq:           "
+command -v uniq || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - vsearch:        "
+command -v vsearch || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - wc:             "
+command -v wc || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - zcat:           "
+command -v zcat || { echo ">>NOT FOUND, optional (.gz format not supported)"; ((o+=1)); };
+
+
+## own scripts ##
+echo ""
+echo "Checking pipeline executables exist:"
+
+
+echo -n " - call-migrate:   "
+command -v call-migrate || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - call-structure: "
+command -v call-structure || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - combinecounts:  "
+command -v combinecounts || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - filter-counts:  "
+command -v filter-counts || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - random-sample:  "
+command -v random-sample || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - seq-filter:     "
+command -v seq-filter || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - simplify-seq:   "
+command -v simplify-seq || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+echo -n " - split-header:   "
+command -v split-header || { echo ">>NOT FOUND<<"; ((m+=1)); };
+
+
+echo ""
+if [ $o -gt 0 ]; then
+	echo "Warning: some ($o) optional executables not found"
+fi
+if [ $m -eq 0 ] && [ $p -eq 0 ]; then
+	echo "Success: everything found in your path"
+	exit 0
+else
+	echo "Error: $m dependencies and $p python modules are missing"
+	exit 1
+fi
+

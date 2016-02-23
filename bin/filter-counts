@@ -1,0 +1,169 @@
+#!/usr/bin/env python
+'''
+#***************************************************************************
+#*                                                                         *
+#*   Copyright (c) 2015 Andrew Robinson <andrewjrobinson@gmail.com>        * 
+#*                                                                         *
+#*   This program is free software; you can redistribute it and/or modify  *
+#*   it under the terms of the GNU Lesser General Public License (LGPL)    *
+#*   as published by the Free Software Foundation; either version 2 of     *
+#*   the License, or (at your option) any later version.                   *
+#*   for detail see the LICENCE text file.                                 *
+#*                                                                         *
+#*   This program is distributed in the hope that it will be useful,       *
+#*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+#*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+#*   GNU Library General Public License for more details.                  *
+#*                                                                         *
+#*   You should have received a copy of the GNU Library General Public     *
+#*   License along with this program; if not, write to the Free Software   *
+#*   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
+#*   USA                                                                   *
+#*                                                                         *
+#***************************************************************************
+
+Created on 3 Dec 2015
+
+@author: arobinson
+'''
+
+# removes loci based on informatitiveness
+
+import sys
+
+if len(sys.argv) < 5:
+    sys.stderr.write("usage: filter-counts MINCOUNT MINSAMPLEALLELE MINSAMPLELOCI TSVFILE [IMPORTANT1, [IMPORTANT2, ... ]]\n\n")
+    sys.stderr.write("       MINCOUNT:        smallest count to use to call as allele present, e.g. 2\n")
+    sys.stderr.write("       MINSAMPLEALLELE: min proportion of samples to count allele as significant, e.g. 0.10 (for 10%)\n")
+    sys.stderr.write("       MINSAMPLELOCI:   min proportion of samples to have data in each loci e.g. 0.80 (i.e. 20% missing data)\n")
+    sys.stderr.write("       TSVFILE:         input file to filter\n")
+    sys.stderr.write("       IMPORTANT:       samples that are to be used instead in stats (instead of all)\n\n")
+    sys.stderr.write("Removes loci based on 3 filters: (All filters use MINCOUNT to assess absence/presence of counts)\n")
+    sys.stderr.write(" 1) All samples must only have counts for 1 or 2 alleles\n")
+    sys.stderr.write(" 2) At least 2 alleles have counts for at least MINSAMPLEALLELE proportion of samples.\n")
+    sys.stderr.write(" 3) At least MINSAMPLELOCI proportion of samples have data for at least 1 allele at loci.\n")
+
+    sys.exit(1)
+
+
+#SEQLINENUM=3
+DELIM="\t"
+
+# Columns with sample counts
+RANGEMIN=4
+RANGEMAX=-1
+
+# threshold for noise
+MINCOUNT=int(sys.argv[1])
+
+# threshold for min number of samples to call allele significant
+MINSAMPLEALLELE=float(sys.argv[2])
+
+# threshold of missing data per loci
+MINSAMPLELOCI=float(sys.argv[3])
+
+# filename to take as input
+TSVFILE = sys.argv[4]
+
+
+# check for important samples filters
+IMPORTANT_SAMPLES = []
+for imp in sys.argv[5:]:
+    # all_cnt100_cl94_s2-4_aln97_s2-4_al_aln/IDX01_RAD02.count
+    if imp.endswith(".count"):
+        imp = imp[:-6]
+    imp = imp.split("/")[-1]
+    IMPORTANT_SAMPLES.append(imp)
+
+sys.stderr.write("%s\n" % (IMPORTANT_SAMPLES,))
+
+
+def groupOK(lines, colids):
+    '''Checks if the line is informative'''
+    counts = []
+
+    # chop out counts (of interest)
+    for line in lines:
+        if len(colids) == 0:
+            counts.append(line[RANGEMIN:RANGEMAX])
+        else:
+            counts.append([line[RANGEMIN:RANGEMAX][i] for i in colids])
+    
+    sampCount = len(counts[0])
+    if sampCount == 0:
+        return False
+
+    # check for maximum of 2 alleles per sample
+    for sampID in range(sampCount):
+        valueCount = 0
+        for line in counts:
+            sampVal = int(line[sampID])
+            if sampVal >= MINCOUNT:
+                valueCount+=1
+        if valueCount > 2:
+            return False
+    
+    # check for at least 2 significant alleles
+    sigAlleleCount = 0
+    for line in counts:
+        valueCount = 0
+        for val in line:
+            sampVal = int(val)
+            if sampVal >= MINCOUNT:
+                valueCount += 1
+        if float(valueCount) / sampCount >= MINSAMPLEALLELE:
+            sigAlleleCount += 1
+    if sigAlleleCount < 2:
+        return False
+    
+    # X% of samples have data for this loci
+    dataCount = 0
+    for ci in range(sampCount):
+        for allele in counts:
+            if int(allele[ci]) >= MINCOUNT:
+                dataCount += 1
+                break
+    if float(dataCount) / sampCount < MINSAMPLELOCI:
+        return False
+
+    return True
+
+def printGroup(lines):
+    for line in lines:
+        print DELIM.join(line)
+
+
+IMPORTANT_COLIDS=[]
+with open(TSVFILE) as infile:
+    linecount = 0
+    linebuffer = []
+    lastid=None
+    for line in infile:
+        if linecount == 0:
+            sys.stdout.write(line)
+            
+            # calculate column numbers for use with stats
+            i=0
+            for col in line.rstrip().split("\t")[RANGEMIN:RANGEMAX]:
+                if col in IMPORTANT_SAMPLES:
+                    IMPORTANT_COLIDS.append(i)
+                i+=1
+            sys.stderr.write("%s\n" % (IMPORTANT_COLIDS,))
+        else:
+            cols = line.rstrip().split("\t")
+            if cols[0] != lastid and len(linebuffer) > 0:
+                if groupOK(linebuffer, IMPORTANT_COLIDS):
+                    printGroup(linebuffer)
+                linebuffer = []
+
+            linebuffer.append(cols)
+            
+            lastid = cols[0]
+        linecount+=1
+    # next line
+    if len(linebuffer) > 0:
+        if groupOK(linebuffer, IMPORTANT_COLIDS):
+            printGroup(linebuffer)
+# close()
+
+

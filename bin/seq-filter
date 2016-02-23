@@ -1,0 +1,26 @@
+#!/usr/bin/env python
+import sys
+
+if len(sys.argv) != 3:
+	print "Usage: seq-filter SEQIDS SEQUENCES.fa"
+	sys.exit(1)
+
+# phase 1: read ids
+ids = set([])
+with open(sys.argv[1]) as idfile:
+	for id in idfile:
+		ids.add(id.rstrip())
+
+# phase 2: filter sequences
+lastid=None
+lastseq=""
+output=False
+with open(sys.argv[2]) as seqfile:
+	for line in seqfile:
+		if line.startswith(">"):
+			sid = line.rstrip().split()[0]
+			output = sid in ids
+		if output:
+			print (line.rstrip())
+
+
