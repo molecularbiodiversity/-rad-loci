@@ -9,8 +9,8 @@ A RADseq pipeline based on a read-cluster approach
 1. VSearch (https://github.com/torognes/vsearch) [Version 1.1.3 was used when testing]
 2. Parallel (http://www.gnu.org/software/parallel/) [Version 20140722 was used when testing]
 3. Python (https://www.python.org/) [Version 2.7.6 was used when testing]
-4. Numerous shell tools (awk, basename, bc, bzcat*, cat, cd, grep, ln, mkdir, paste, pwd, rm
-   sed, sort, tail, uniq, wc, zcat*) *optional commands
+4. Numerous shell tools (awk, basename, bc, bzcat\*, cat, cd, grep, ln, mkdir, paste, pwd, rm
+   sed, sort, tail, uniq, wc, zcat\*) \*optional commands
 
 NOTE: there is a command in the bin directory that checks that it can find all necessory 
 commands called 'check-dependencies'
