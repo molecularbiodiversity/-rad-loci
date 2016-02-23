@@ -1,0 +1,134 @@
+#!/usr/bin/env python
+'''
+#***************************************************************************
+#*                                                                         *
+#*   Copyright (c) 2014 Andrew Robinson <andrewjrobinson@gmail.com>        * 
+#*                                                                         *
+#*   This program is free software; you can redistribute it and/or modify  *
+#*   it under the terms of the GNU Lesser General Public License (LGPL)    *
+#*   as published by the Free Software Foundation; either version 2 of     *
+#*   the License, or (at your option) any later version.                   *
+#*   for detail see the LICENCE text file.                                 *
+#*                                                                         *
+#*   This program is distributed in the hope that it will be useful,       *
+#*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+#*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+#*   GNU Library General Public License for more details.                  *
+#*                                                                         *
+#*   You should have received a copy of the GNU Library General Public     *
+#*   License along with this program; if not, write to the Free Software   *
+#*   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
+#*   USA                                                                   *
+#*                                                                         *
+#***************************************************************************
+
+Created on 19/08/2014
+
+@author: arobinson
+'''
+
+import sys
+import os
+
+def help():
+    print '''
+combinecounts: Merges a number of files with key/value pairs into a single tabulated file
+
+combinecounts [<options>] <files> [<options> <files> ...]
+
+Options:
+-h, --help     Print this help documentation and exit
+--*            Configure the ordering of Key and Value columns.  [default: --KV]
+               e.g. --KV will set the first column as key, 2nd as value
+                    --VK will set the first column as value, 2nd as key
+                    --K.V will set first column as key, 2nd skipped, 3rd as value
+-d<char>       Set <char> as the input file delimiter [default: \\t], if you 
+               don't provide <char> then it will function in white-space mode.
+               
+Note: options function on all files that follow them in the command line or
+      until they are overridden by a later option.
+      
+Output:
+seqname    <file1>    <file2>    ...
+key1       val1       val2       ...
+...
+output delimiter is the tab character
+'''
+
+
+if len(sys.argv) <= 1:
+    print '''ERROR: combinecounts expects a number of files and/or options'''
+    help()
+    exit()
+
+if '-h' in sys.argv or '--help' in sys.argv:
+    help()
+    exit()
+
+
+indelimiter = '\t'
+outdelimiter = '\t'
+key = 0
+val = 1
+
+files = []
+counts = {}
+
+# process each filename/flag
+i = 0
+a = 1
+args = len(sys.argv)
+while a < args:
+    arg = sys.argv[a]
+    
+    # see if its a flag
+    if arg.startswith('--'):
+        key = arg[2:].index('K')
+        val = arg[2:].index('V')
+    elif arg.startswith('-d'):
+        if len(arg) == 2:
+            a += 1
+            indelimiter = sys.argv[a]
+        else:
+            indelimiter = arg[2:]
+        indelimiter = str(indelimiter).replace('\\t', '\t')
+        if indelimiter.lower() == "none" or indelimiter == '':
+            indelimiter = None
+    else: # its a file
+        files.append((arg, key, val, i, indelimiter))
+        i += 1
+    a += 1
+
+
+def processFile(filename, keyid, valid, fileid, delimiter):
+    ''''''
+    with open(filename) as f:
+        for line in f:
+            cols = line.strip().split(delimiter)
+            if len(cols) > keyid and len(cols) > valid: 
+                key = cols[keyid]
+                val = cols[valid]
+                if key not in counts:
+                    counts[key] = ['0' for i in range(len(files))]
+                if ' ' in val:
+                    val = '"%s"' % val
+                counts[key][fileid] = val
+            
+# analyse files
+for filename in files:
+    processFile(*filename)
+
+# print header row
+rowvals = ["seqname"]
+for filename in files:
+    filename = os.path.basename(filename[0])
+    if filename.endswith('.count'):
+        filename = filename[:-6]
+    rowvals.append(filename)
+print outdelimiter.join(rowvals)
+    
+# rows
+for seqname, vals in counts.items():
+    print "%s%s%s" % (seqname, outdelimiter, outdelimiter.join(vals))
+
+

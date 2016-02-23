@@ -1,0 +1,195 @@
+#!/usr/bin/env python
+# encoding: utf-8
+'''
+ Creates a migrate file from a RADseq Pipeline tsv file
+
+@author:     Andrew Robinson
+@copyright:  2016 Andrew Robinson. All rights reserved.
+@license:    BSD
+@contact:    andrew.robinson@latrobe.edu.au
+'''
+
+import sys
+import os
+import random
+import re
+
+
+__all__ = []
+__version__ = 0.1
+__date__ = '2016-02-02'
+__updated__ = '2016-02-02'
+
+
+def main(argv=None):
+    ''''''
+    
+    zeroThreshold = 2
+    
+    files = []
+    
+    # parse args
+    curarg=None
+    for arg in argv[1:]:
+        if curarg is not None:
+            if curarg == "-z":
+                try:
+                    zeroThreshold = int(arg)
+                except:
+                    zeroThreshold = 2
+                    sys.stderr.write("Zero threshold: '%s' is not an integer\n"%arg)
+                    return 1
+            curarg = None
+        elif arg in ("-z",):
+            curarg=arg
+        else:
+            files.append(arg)
+    if len(files) != 2:
+        sys.stderr.write("Error: call-migrate needs two files to operate on. Given %s\n" % len(files))
+        help()
+        return 1
+    popfilename=files[0]
+    tsvfilename=files[1]
+    
+    ## 1: read population file ##
+    samplePop = {}
+    populations = {}
+    with open(popfilename) as ph:
+        for line in ph:
+            line = line.rstrip()
+            if not line.startswith("#") and line != "":
+                cols = line.split(None, 2)
+                if len(cols) >= 2:
+                    samplePop[cols[0]] = cols[1]
+                    if cols[1] in populations:
+                        populations[cols[1]] += 1
+                    else:
+                        populations[cols[1]] = 1
+    
+    
+    # read the tsvfile
+    with open(tsvfilename) as th:
+        
+        ## 2.1: read sample names
+        # extract header information
+        headers = th.readline().rstrip().split("\t")
+        samples = []
+        sampleConvert = {}
+        pat = re.compile("IDX(\d*)_RAD(\d*)")
+        for sample in headers[4:-1]:
+            m = pat.search(sample)
+            if m:
+                samples.append(sample)
+                sampleConvert[sample] = "IDX%sRD%s" % (m.group(1), m.group(2))
+        
+        
+        ## 2.2: read loci counts ##
+        # read the loci
+        lastID = None
+        lastLocLen = 0
+        counts = []
+        loci = []
+        lociSeqLens = []
+        for line in th:
+            line = line.rstrip()
+            cols = line.split("\t")
+            if lastID != cols[0]:
+                if lastID is not None:
+                    loci.append(callSamples(samples, counts, zeroThreshold))
+                    lociSeqLens.append(lastLocLen)
+                    counts = []
+            counts.append((cols[4:-1], cols[-1]))
+            lastID = cols[0]
+            lastLocLen = str(len(cols[-1]))
+        if lastID is not None:
+            loci.append(callSamples(samples, counts, zeroThreshold))
+            lociSeqLens.append(lastLocLen)
+            counts = []
+            
+        
+        ## 3: write output format ##
+        # output data size header
+        sys.stdout.write("%s %s RADseq Pipeline results for %s\n" % (len(populations), len(loci), tsvfilename))
+        
+        # output allele length header
+        sys.stdout.write("%s\n" % (" ".join(lociSeqLens),))
+        
+        # output each population
+        sampleWarnings = set([])
+        for pop, popSize in populations.items():
+            
+            # output population header
+            popSizes = []
+            for locus in loci:
+                locusCount = 0
+                for sampleName, allele1, allele2 in locus:
+                    if sampleName in samplePop:
+                        if samplePop[sampleName] == pop:
+                            locusCount += 1
+                    elif sampleName not in sampleWarnings:
+                        sampleWarnings.add(sampleName)
+                        sys.stderr.write("Warning: Sample '%s' not in population file\n" % sampleName)
+                popSizes.append(str(locusCount))
+            sys.stdout.write("%s %s\n" % (" ".join(popSizes), pop))
+            
+            # output each sample for each loci
+            for locus in loci:
+                for sampleName, allele1, allele2 in locus:
+                    if sampleName in samplePop and samplePop[sampleName] == pop:
+                            sys.stdout.write("%9s %s\n" % (sampleConvert[sampleName], allele1))
+                            sys.stdout.write("%9s %s\n" % (sampleConvert[sampleName], allele2))
+                        
+    return 0
+
+
+def callSamples(sampleNames, sampleCounts, zeroThreshold):
+    '''
+    Converts sample counts into sequences ready for output in migrate format
+    
+    sampleNames:    list of sample names e.g. ['sample1', 'sample2', ...]
+    sampleCounts:   tuple of sample counts for each allele in locus and allele sequence
+                    e.g. [([s1count, s2count, ...], allele1seq), ([..], allele2seq),...)]
+    
+    return: a list of tuples with samplename, allele1 and allele2
+    '''
+    result = []
+    for i in xrange(len(sampleNames)):
+        sampleName = sampleNames[i]
+        
+        sampAllele = []
+        for counts, allele in sampleCounts:
+            if int(counts[i]) >= zeroThreshold:
+                sampAllele.append(allele)
+        
+        if len(sampAllele) < 1:
+#             result.append((sampleName, None, None))
+            pass
+        elif len(sampAllele) < 2:
+            result.append((sampleName, sampAllele[0], sampAllele[0])) # homo
+        else:
+            result.append((sampleName, sampAllele[0], sampAllele[1])) # het
+    return result
+# end callSamples()
+
+
+def help():
+    '''Prints usage and help information'''
+    
+    sys.stdout.write("usage: call-migrate [-h | --help]\n")
+    sys.stdout.write("       call-migrate [-z threshold] popfile tsvfile\n")
+    sys.stdout.write("\n")
+    sys.stdout.write("       -z threshold  the lowest number considered a real count. Default: 2\n")
+    sys.stdout.write("       popfile       a white-space delimited file containing samplename and population-name\n")
+    sys.stdout.write("       tsvfile       tsv file generated by rad-seq pipeline (generally filtered by random-sample\n")
+    sys.stdout.write("\n")
+    sys.stdout.write("  Creates a migrate file for the given tsvfile which is grouped by populations\n")
+
+
+if __name__ == "__main__":
+    if "-h" in sys.argv or "--help" in sys.argv or len(sys.argv) < 3:
+        help()
+        sys.exit(0)
+    else:
+        sys.exit(main(sys.argv))
+    
+
