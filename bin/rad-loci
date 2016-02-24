@@ -55,6 +55,12 @@
 ## SETTINGS ##
 ##############
 
+if [ $# -ne 1 ]; then
+	echo "Usage: rad-loci SETTINGS.conf"
+	exit 1
+fi
+SETTINGSFILE=$1
+
 ## load settings ##
 # defaults
 DEFSETTINGS=$(dirname $0)/../share/rad-loci/settings.default
@@ -63,15 +69,16 @@ if [ -f $DEFSETTINGS ]; then
 else
 	echo "ERROR: Unable to locate default settings file"
 	echo "       It should be at: $DEFSETTINGS"
-	exit 1
+	exit 2
 fi
 
 # local override
-if [ -f settings.conf ]; then
-	source settings.conf
+if [ -f $SETTINGSFILE ]; then
+	source $SETTINGSFILE
 else
-	echo "WARNING: Unable to find local settings file"
-	echo "         run 'rad-loci-settings' to create one"
+	echo "ERROR: Unable to find local settings file"
+	echo "       run 'rad-loci-settings SETTINGS.conf' to create one"
+	exit 3
 fi
 
 ## Auto correct settings vars ##

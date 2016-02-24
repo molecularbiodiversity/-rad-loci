@@ -2,16 +2,27 @@
 
 # creates a new settings file in the current working directory
 
-if [ -f settings.conf ]; then
-	echo "ERROR: settings.conf already exists"
+if [ $# -ne 1 ]; then
+	echo "Usage: rad-loci-settings SETTINGSFILE.conf"
 	exit 1
+fi
+
+OUTFILE=$1
+
+# check it doesn't exist
+if [ -f $OUTFILE ]; then
+	echo "ERROR: '$OUTFILE' already exists"
+	exit 2
 else
+	# make sure sample exists
 	SAMPSETTINGS=$(dirname $0)/../share/rad-loci/settings.sample
 	if [ ! -f $SAMPSETTINGS ]; then
 		echo "ERROR: unable to find sample settings file"
-		exit 2
+		exit 3
 	fi
-	cat $SAMPSETTINGS > settings.conf
-	echo "Created settings.conf"
+
+	# create settings file
+	cat $SAMPSETTINGS > $OUTFILE
+	echo "Created $OUTFILE"
 fi
 
