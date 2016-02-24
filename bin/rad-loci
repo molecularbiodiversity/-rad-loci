@@ -93,6 +93,7 @@ if [ -n "$SCRIPT_DIR" ] && [[ "$SCRIPT_DIR" != */ ]]; then
 fi
 
 
+
 ##############################
 ## Step 0: prepare database ##
 # - Filters sample filenames to those containing fasta or fastq sequences (optionally with gz and bz2 compression)
@@ -474,7 +475,7 @@ S7_OUTPUT=${S5_OUTPUT}_merged
 OUTPUT_SAMPLES=${S6_OUTPUT_DIR}/*.count
 IMPORTANT_SAMPLES=$OUTPUT_SAMPLES
 
-if [ $MIN_ALLELES_PER_SAMPLE > 0 ]; then
+if [ $MIN_ALLELES_PER_SAMPLE -gt 0 ]; then
 
 	S7_OUTPUT=${S5_OUTPUT}_merged$MIN_ALLELES_PER_SAMPLE
 

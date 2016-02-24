@@ -21,16 +21,67 @@ commands called 'check-dependencies'
 2. Extract archive
 3. Add bin directory to your path
 
+e.g.
+
+```sh
+# Download the source (and unpack)
+wget https://github.com/molecularbiodiversity/rad-loci/archive/v0.2.tar.gz
+tar xf v0.2.tar.gz
+
+# Optional: you may want to move the source somewhere else.  If you do you
+# will need to cd to the directory containing it too.
+#mv rad-loci-0.2 /usr/local
+#cd /usr/local
+
+# Add to path (you may want to put this in your ~/.bashrc file to you don't
+# need to do it each time).
+# use 'pwd' command to work out your working directory (as you will need to
+# hard-code it if you use the ~/.bashrc option)
+export PATH=$PATH:$PWD/rad-loci-0.2/bin
+
+# Check dependencies were ok
+check-dependencies
+# this should output "Success: everything found in your path" at end
+```
+
 ### Quick start
 
-1. Make a directory called 'scripts' in your current directory and copy/symlink all your sample 
+1. Make a directory called 'samples' in your current directory and copy/symlink all your sample 
    fastq or fasta files into it
 2. Run 'rad-loci-settings settings.conf' program to create a new settings file in your current working 
    directory.  Optionally change any of the settings as required
-3. Run 'radseq-pipeline settings.conf' command.  It will output a lot of progress information on the
+3. Run 'rad-loci settings.conf' command.  It will output a lot of progress information on the
    terminal.  It will take a while to process the data based on how much input data is 
    provided so it is best if you run in with nohup or as an HPC job.
 
+e.g.
+```sh
+# create a directory for this experiment
+mkdir experiment
+cd experiment
+
+# create a directory for the samples (input)
+mkdir samples
+cd samples
+# copy or symlink the sample fastq/fasta files
+#ln -s /some/path/to/sample/files*.fq .
+#cp /some/path/to/sample/files*.fq .
+cd ..
+
+# create settings
+rad-loci-settings settings.conf
+# edit the settings as necessory
+#nano settings.conf
+#vim settings.conf
+
+# run the pipeline (with nohup as it might take a while and
+# we don't want it to terminate if our connection drops)
+nohup rad-loci settings.conf &
+
+# watch the output
+tail -f nohup.out
+#Ctrl+C to exit this view as it will go for ever
+```
 
 ## Processing steps
 
