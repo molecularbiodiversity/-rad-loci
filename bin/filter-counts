@@ -75,7 +75,6 @@ for imp in sys.argv[5:]:
     imp = imp.split("/")[-1]
     IMPORTANT_SAMPLES.append(imp)
 
-sys.stderr.write("%s\n" % (IMPORTANT_SAMPLES,))
 
 
 def groupOK(lines, colids):
@@ -148,7 +147,6 @@ with open(TSVFILE) as infile:
                 if col in IMPORTANT_SAMPLES:
                     IMPORTANT_COLIDS.append(i)
                 i+=1
-            sys.stderr.write("%s\n" % (IMPORTANT_COLIDS,))
         else:
             cols = line.rstrip().split("\t")
             if cols[0] != lastid and len(linebuffer) > 0:
