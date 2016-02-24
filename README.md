@@ -23,13 +23,13 @@ commands called 'check-dependencies'
 
 ### Quick start
 
-1. Make a directory called '' in your current directory and copy/symlink all your sample 
+1. Make a directory called 'scripts' in your current directory and copy/symlink all your sample 
    fastq or fasta files into it
-2. Run 'rad-loci-settings' program to create a new settings file in your current working 
+2. Run 'rad-loci-settings settings.conf' program to create a new settings file in your current working 
    directory.  Optionally change any of the settings as required
-3. Run 'radseq-pipeline' command.  It will output a lot of progress information on the
+3. Run 'radseq-pipeline settings.conf' command.  It will output a lot of progress information on the
    terminal.  It will take a while to process the data based on how much input data is 
-   provided so it is best if you run in with nohup or as a HPC job.
+   provided so it is best if you run in with nohup or as an HPC job.
 
 
 ## Processing steps
