@@ -71,6 +71,12 @@ else
 	echo "       It should be at: $DEFSETTINGS"
 	exit 2
 fi
+#
+# Default sort is just a bare 'sort' picked up from the PATH
+#  and defaults for additonal options are empty
+SORT=sort
+SORT_COMPRESS_FLAG=
+SORT_TMPDIR_FLAG=
 
 # local override
 if [ -f $SETTINGSFILE ]; then
@@ -80,6 +86,14 @@ else
 	echo "       run 'rad-loci-settings SETTINGS.conf' to create one"
 	exit 3
 fi
+
+# The SETTINGSFILE may override and/or add
+#  The path to the required sort command
+#  A flag to make sort compress its temporary files
+#  A flag to explicitly set the directory to use for temporary files
+# so define the sort command the user wants here
+#
+SORT="$SORT $SORT_COMPRESS_FLAG $SORT_TMPDIR_FLAG "
 
 ## Auto correct settings vars ##
 
@@ -206,7 +220,7 @@ outFile=\${outFile%.fasta};
 outFile=\${outFile%.fa}.count;
 if [ ! -e \$outFile ]; then 
 	echo \"- Creating: \$outFile\"; 
-	\$CATPROG {1} | paste - - | awk -F\"\t\" '{print \$2}' | sort | uniq -c > \$outFile; 
+	\$CATPROG {1} | paste - - | awk -F\"\t\" '{print \$2}' | ${SORT} | uniq -c > \$outFile; 
 else 
 	echo \"- Skipping: \$outFile, already exists\"; 
 fi;"
@@ -216,7 +230,7 @@ fi;"
 
 	# merge samples counts
 	echo "Merge counts/filter minimum occurrences: $(date)"
-	sort -k2,2 -m ${COUNT_SAMPLE_DIR}/*.count \
+	${SORT} -k2,2 -m ${COUNT_SAMPLE_DIR}/*.count \
 	| awk 'BEGIN{i=1; c=0; lseq=""} 
 	  {if (lseq!=$2 && lseq!="") {if (c>='$MIN_SEQ_GLOBAL_OCCURS') {print ">"i"_"c"\n"lseq; i++} c=0} c+=$1; lseq=$2} 
 	  END {if (c>='$MIN_SEQ_GLOBAL_OCCURS') {print ">"i"_"c"\n"lseq;}}' \
@@ -335,7 +349,7 @@ S4_OUTPUT=${S3_OUTPUT}_s${MIN_MEMBERS}-${MAX_MEMBERS}
 if [ ! -e ${S4_OUTPUT}.id ]; then
 	echo "Creating ${S4_OUTPUT}.id"
 	grep "^Target" ${S3_OUTPUT}.aln \
-	| sort \
+	| ${SORT} \
 	| uniq -c \
 	| awk '$1 >= '$MIN_MEMBERS' && $1 <= '$MAX_MEMBERS \
 	| sed 's/_\([0-9]\)*$/ \1/' \
@@ -448,7 +462,7 @@ for SAMPLEFILENAME in $SAMPLES; do
 		echo "Creating ${S6_OUTPUT_DIR}/${S6_OUTPUT}.count"
 		grep "^Target" ${S6_OUTPUT_DIR}/${S6_OUTPUT}.aln \
 			| awk '{print $3}' \
-			| sort \
+			| ${SORT} \
 			| uniq -c \
 			  > ${S6_OUTPUT_DIR}/${S6_OUTPUT}.count
 	
@@ -501,7 +515,7 @@ if [ ! -e ${S7_OUTPUT}.tsv ]; then
 	 ${OUTPUT_SAMPLES} \
 	 <(cat ${S5_OUTPUT}.fa | paste - - | awk '{print $2" "$1}') \
 	| ${SCRIPT_DIR}split-header 1 2> header.tmp \
-	| sort -k2,2 -k1,1 \
+	| ${SORT} -k2,2 -k1,1 \
 	| awk 'BEGIN{a=1; OFS="\t"} {if (l!=$2)a=1; l=$2; A=$1; $1=$2"\t"a; $2=A; print $0; a++}' \
 	> ${S7_OUTPUT}.tmp
 
@@ -516,7 +530,7 @@ fi
 # simplify the sequence
 ${SCRIPT_DIR}simplify-seq ${S7_OUTPUT}.tsv > ${S7_OUTPUT}_ss.tsv
 
-S7_COUNT=$(awk '{print $1}' ${S7_OUTPUT}.tsv | sort | uniq | wc -l)
+S7_COUNT=$(awk '{print $1}' ${S7_OUTPUT}.tsv | ${SORT} | uniq | wc -l)
 
 
 
@@ -537,7 +551,7 @@ else
 	echo "Skipping ${S8_OUTPUT}.tsv, already exists"
 fi
 
-S8_COUNT=$(awk '{print $1}' ${S8_OUTPUT}.tsv | sort | uniq | wc -l)
+S8_COUNT=$(awk '{print $1}' ${S8_OUTPUT}.tsv | ${SORT} | uniq | wc -l)
 
 # removing greater than sign from IDs
 if [ ! -e ${S8_OUTPUT}_ngt.tsv ]; then

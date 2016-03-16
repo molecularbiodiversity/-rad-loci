@@ -8,9 +8,22 @@
 # S0-1, S3 & S6: Number of CPU's to use for programs that support more than 1
 # if you are running this job under SLURM then you can set it to 0 and have it
 # work out how many CPUs to use
-# if you are running this job under GridEngine  then you can set it to 0 and
+# if you are running this job under GridEngine then you can set it to 0 and
 # have it work out how many CPUs to use
 THREADS=8
+
+# sort command settings
+# Allow for overriding of the bare 'sort' found on the user's PATH
+#  st the time the commands inside the rad-loci script are run
+# Examples flags are from a GNU sort
+#
+# Explicity specify the full path to the sort command to use
+# SORT=/opt/gnu/bin/sort
+# Option to sort to compresses temporary files
+# SORT_COMPRESS_FLAG="--compress-program=/usr/bin/bzip2"
+# Option to sort to specifies location for temporary files
+#  default is usually $TMPDIR or, if not set, /tmp
+# SORT_TMPDIR_FLAG="--temporary-directory=./"
 
 ## Specific settings
 # S0: Catalog name
