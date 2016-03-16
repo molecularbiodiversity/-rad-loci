@@ -8,6 +8,8 @@
 # S0-1, S3 & S6: Number of CPU's to use for programs that support more than 1
 # if you are running this job under SLURM then you can set it to 0 and have it
 # work out how many CPUs to use
+# if you are running this job under GridEngine  then you can set it to 0 and
+# have it work out how many CPUs to use
 THREADS=8
 
 ## Specific settings

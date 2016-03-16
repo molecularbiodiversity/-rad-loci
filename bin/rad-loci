@@ -85,14 +85,19 @@ fi
 
 if [ -n "$SLURM_CPUS_ON_NODE" ] && [ "$THREADS" -eq "0" ]; then
 	THREADS=$SLURM_CPUS_ON_NODE
-	echo "Automagically switching to $THREADS threads"
+	echo "Automagically switching to $THREADS threads for SLURM"
 fi
 
 if [ -n "$SCRIPT_DIR" ] && [[ "$SCRIPT_DIR" != */ ]]; then
 	SCRIPT_DIR="$SCRIPT_DIR/"
 fi
 
+## Auto correct THREADS to honour GridEngine's NSLOTS variable
 
+if [ -n "$NSLOTS" ] && [ "$THREADS" -eq "0" ]; then
+	THREADS=$NSLOTS
+	echo "Automagically switching to $THREADS threads for GridEngine"
+fi
 
 ##############################
 ## Step 0: prepare database ##
