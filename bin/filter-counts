@@ -191,8 +191,8 @@ with open(TSVFILE) as infile:
 
 sumfile = os.path.splitext(TSVFILE)[0] + ("_mc%s_ma%s_ml%s.discard.count" % (MINCOUNTSTR, MINSAMPLEALLELESTR, MINSAMPLELOCISTR,))
 with open(sumfile, 'w') as infile:
-    infile.write("Passed Clusters\t%s\n" % (COUNTS['Passed'],))
-    infile.write("Discarded Clusters\t%s\n" % (COUNTS['Failed'],))
+    infile.write("S8: Passed Clusters\t%s\n" % (COUNTS['Passed'],))
+    infile.write("S8: Discarded Clusters\t%s\n" % (COUNTS['Failed'],))
     infile.write("- >2 Alleles\t%s\n" % (COUNTS['TwoAlleles'],))
     infile.write("- <2 Significant(>=%s) Alleles\t%s\n" % (MINSAMPLEALLELE,COUNTS['TwoSigAlleles'],))
     infile.write("- <%s Alleles\t%s\n" % (MINSAMPLELOCI, COUNTS['MinSamples'],))
