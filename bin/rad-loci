@@ -212,9 +212,10 @@ fi;"
 	# merge samples counts
 	echo "Merge counts/filter minimum occurrences: $(date)"
 	sort -k2,2 -m ${COUNT_SAMPLE_DIR}/*.count \
-	| awk 'BEGIN{i=1; c=0; lseq=""} 
-	  {if (lseq!=$2 && lseq!="") {if (c>='$MIN_SEQ_GLOBAL_OCCURS') {print ">"i"_"c"\n"lseq; i++} c=0} c+=$1; lseq=$2} 
-	  END {if (c>='$MIN_SEQ_GLOBAL_OCCURS') {print ">"i"_"c"\n"lseq;}}' \
+	| awk 'BEGIN{i=1; c=0; lseq=""; d=0; dc=0;} \
+	  {if (lseq!=$2 && lseq!="") {if (c>='$MIN_SEQ_GLOBAL_OCCURS') {print ">"i"_"c"\n"lseq; i++} \
+	   else {d+=c; dc+=1;} c=0} c+=$1; lseq=$2} \
+	  END {if (c>='$MIN_SEQ_GLOBAL_OCCURS') {print ">"i"_"c"\n"lseq;} else {d+=c; dc+=1;} print "S0: Discarded Sequences\n- Unique\t"dc"\n- Total \t"d > "'${S0_OUTPUT}'.discard.count";}' \
 	> ${S0_OUTPUT}.fa
 
 	# cleanup
@@ -224,6 +225,7 @@ else
 fi
 
 S0_COUNT=$(($(cat ${S0_OUTPUT}.fa | wc -l)/2))
+
 
 
 #####################
@@ -271,7 +273,12 @@ if [ ! -e ${S2_OUTPUT}.fa ]; then
 	echo "Creating ${S2_OUTPUT}.fa"
 	sed 's/^\(.*\);size=\([0-9]*\)\(.*\);$/\2\t\1_\2 \3/g' ${S1_OUTPUT}.fa \
 	| paste - - \
-	| awk -F"\t" '$1 >= '$MIN_MEMBERS' && $1 <= '$MAX_MEMBERS' {print $2"\n"$3}' \
+	| awk -F"\t" \
+		'BEGIN {m=0; mc=0; M=0;} \
+		$1 >= '$MIN_MEMBERS' && $1 <= '$MAX_MEMBERS' {print $2"\n"$3} \
+		$1 < '$MIN_MEMBERS' {m+=1; split($2, cc, "_"); mc+=cc[2];} \
+		$1 > '$MAX_MEMBERS' {M+=1;} \
+		END {print "S2: Discarded Clusters\n- <'$MIN_MEMBERS'\t"m"\t"mc"\n- >'$MAX_MEMBERS'\t"M > "'${S2_OUTPUT}'.discard.count"}' \
 	   > ${S2_OUTPUT}.fa
 else
 	echo "Skipping ${S2_OUTPUT}.fa, already exists"
@@ -332,9 +339,13 @@ if [ ! -e ${S4_OUTPUT}.id ]; then
 	grep "^Target" ${S3_OUTPUT}.aln \
 	| sort \
 	| uniq -c \
-	| awk '$1 >= '$MIN_MEMBERS' && $1 <= '$MAX_MEMBERS \
-	| sed 's/_\([0-9]\)*$/ \1/' \
-	| awk '$1 == $5 {print $4}' > \
+	| awk ' BEGIN {m=0; M=0;}\
+			$1 >= '$MIN_MEMBERS' && $1 <= '$MAX_MEMBERS' {print $0} \
+			$1 < '$MIN_MEMBERS' {m+=1} \
+			$1 > '$MAX_MEMBERS' {M+=1} \
+			END {print "S4: Discarded Clusters\n- <'$MIN_MEMBERS'\t"m"\n- >'$MAX_MEMBERS'\t"M > "'${S4_OUTPUT}'.discard.count"}' \
+	| sed 's/_\([0-9]*\)$/ \1/' \
+	| awk 'BEGIN {c=0;} $1 == $5 {print $4} $1 != $5 {c+=1;} END {print "- Size change\t"c >>"'${S4_OUTPUT}'.discard.count"}' > \
 	    ${S4_OUTPUT}.id
 else
 	echo "Skipping ${S4_OUTPUT}.id, already exists"
@@ -511,7 +522,7 @@ fi
 # simplify the sequence
 ${SCRIPT_DIR}simplify-seq ${S7_OUTPUT}.tsv > ${S7_OUTPUT}_ss.tsv
 
-S7_COUNT=$(awk '{print $1}' ${S7_OUTPUT}.tsv | sort | uniq | wc -l)
+S7_COUNT=$(tail -n+2 ${S7_OUTPUT}.tsv | awk '{print $1}' | sort | uniq | wc -l)
 
 
 
@@ -532,7 +543,7 @@ else
 	echo "Skipping ${S8_OUTPUT}.tsv, already exists"
 fi
 
-S8_COUNT=$(awk '{print $1}' ${S8_OUTPUT}.tsv | sort | uniq | wc -l)
+S8_COUNT=$(tail -n+2 ${S8_OUTPUT}.tsv | awk '{print $1}' | sort | uniq | wc -l)
 
 # removing greater than sign from IDs
 if [ ! -e ${S8_OUTPUT}_ngt.tsv ]; then
@@ -590,19 +601,19 @@ fi
 ## Summary ##
 echo ""
 echo "[Counts]"
-echo " - Seqs ${MIN_SEQ_GLOBAL_OCCURS}+ copies:         $S0_COUNT"
-echo " - Clusters:                 $S1_COUNT"
-echo " - Clusters of ${MIN_MEMBERS}-${MAX_MEMBERS} members:  $S2_COUNT"
-echo " - Matched Seqs:             $S3_COUNT"
-echo " - Aligned with ${MIN_MEMBERS}-${MAX_MEMBERS} members: $S4A_COUNT ids ($S4B_COUNT seqs)"
-echo " - Total alleles:            ${S5B_COUNT} (from ${S5A_COUNT})"
+echo " - Seqs ${MIN_SEQ_GLOBAL_OCCURS}+ copies:         $S0_COUNT  [s0]"
+echo " - Clusters:                 $S1_COUNT  [s1]"
+echo " - Clusters of ${MIN_MEMBERS}-${MAX_MEMBERS} members:  $S2_COUNT  [s2]"
+echo " - Matched Seqs:             $S3_COUNT  [s3]"
+echo " - Aligned with ${MIN_MEMBERS}-${MAX_MEMBERS} members: $S4A_COUNT ids ($S4B_COUNT seqs)  [s4]"
+echo " - Total alleles:            ${S5B_COUNT} (from ${S5A_COUNT})  [s5]"
 if [ -z "$S6_STATS" ]; then
 	echo " - Samples: were not counted as they were pre-existing"
 else
-	echo -e " - Samples:${S6_STATS}"
+	echo -e " - Samples:${S6_STATS}  [s6]"
 fi
-echo " - Loci:                     ${S7_COUNT}"
-echo " - Filtered loci:            ${S8_COUNT}"
+echo " - Loci:                     ${S7_COUNT}  [s7]"
+echo " - Filtered loci:            ${S8_COUNT}  [s8]"
 echo ""
 
 echo "[Outputs]"

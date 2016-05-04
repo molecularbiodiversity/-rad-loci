@@ -29,7 +29,7 @@ Created on 3 Dec 2015
 
 # removes loci based on informatitiveness
 
-import sys
+import sys, os
 
 if len(sys.argv) < 5:
     sys.stderr.write("usage: filter-counts MINCOUNT MINSAMPLEALLELE MINSAMPLELOCI TSVFILE [IMPORTANT1, [IMPORTANT2, ... ]]\n\n")
@@ -54,13 +54,16 @@ RANGEMIN=4
 RANGEMAX=-1
 
 # threshold for noise
-MINCOUNT=int(sys.argv[1])
+MINCOUNTSTR=sys.argv[1]
+MINCOUNT=int(MINCOUNTSTR)
 
 # threshold for min number of samples to call allele significant
-MINSAMPLEALLELE=float(sys.argv[2])
+MINSAMPLEALLELESTR=sys.argv[2]
+MINSAMPLEALLELE=float(MINSAMPLEALLELESTR)
 
 # threshold of missing data per loci
-MINSAMPLELOCI=float(sys.argv[3])
+MINSAMPLELOCISTR=sys.argv[3]
+MINSAMPLELOCI=float(MINSAMPLELOCISTR)
 
 # filename to take as input
 TSVFILE = sys.argv[4]
@@ -76,10 +79,21 @@ for imp in sys.argv[5:]:
     IMPORTANT_SAMPLES.append(imp)
 
 
+COUNTS={
+        'ZeroCounts': 0,
+        'TwoAlleles': 0,
+        'TwoSigAlleles': 0,
+        'MinSamples': 0,
+        'Failed': 0,
+        'Passed': 0,
+       }
+
 
 def groupOK(lines, colids):
     '''Checks if the line is informative'''
     counts = []
+    
+    passed = True
 
     # chop out counts (of interest)
     for line in lines:
@@ -90,6 +104,8 @@ def groupOK(lines, colids):
     
     sampCount = len(counts[0])
     if sampCount == 0:
+        COUNTS['ZeroCounts']+=1
+        COUNTS['Failed']+=1
         return False
 
     # check for maximum of 2 alleles per sample
@@ -100,7 +116,9 @@ def groupOK(lines, colids):
             if sampVal >= MINCOUNT:
                 valueCount+=1
         if valueCount > 2:
-            return False
+            COUNTS['TwoAlleles']+=1
+            passed = False
+            break
     
     # check for at least 2 significant alleles
     sigAlleleCount = 0
@@ -113,7 +131,8 @@ def groupOK(lines, colids):
         if float(valueCount) / sampCount >= MINSAMPLEALLELE:
             sigAlleleCount += 1
     if sigAlleleCount < 2:
-        return False
+        COUNTS['TwoSigAlleles']+=1
+        passed = False
     
     # X% of samples have data for this loci
     dataCount = 0
@@ -123,9 +142,15 @@ def groupOK(lines, colids):
                 dataCount += 1
                 break
     if float(dataCount) / sampCount < MINSAMPLELOCI:
-        return False
+        COUNTS['MinSamples']+=1
+        passed = False
 
-    return True
+    if passed:
+        COUNTS['Passed']+=1
+    else:
+        COUNTS['Failed']+=1
+        
+    return passed
 
 def printGroup(lines):
     for line in lines:
@@ -164,4 +189,12 @@ with open(TSVFILE) as infile:
             printGroup(linebuffer)
 # close()
 
+sumfile = os.path.splitext(TSVFILE)[0] + ("_mc%s_ma%s_ml%s.discard.count" % (MINCOUNTSTR, MINSAMPLEALLELESTR, MINSAMPLELOCISTR,))
+with open(sumfile, 'w') as infile:
+    infile.write("S8: Passed Clusters\t%s\n" % (COUNTS['Passed'],))
+    infile.write("S8: Discarded Clusters\t%s\n" % (COUNTS['Failed'],))
+    infile.write("- >2 Alleles\t%s\n" % (COUNTS['TwoAlleles'],))
+    infile.write("- <2 Significant(>=%s) Alleles\t%s\n" % (MINSAMPLEALLELE,COUNTS['TwoSigAlleles'],))
+    infile.write("- <%s Alleles\t%s\n" % (MINSAMPLELOCI, COUNTS['MinSamples'],))
+    infile.write("- No Data (Error)\t%s\n" % (COUNTS['ZeroCounts'],))
 
