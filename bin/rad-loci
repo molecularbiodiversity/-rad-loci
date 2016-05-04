@@ -522,7 +522,7 @@ fi
 # simplify the sequence
 ${SCRIPT_DIR}simplify-seq ${S7_OUTPUT}.tsv > ${S7_OUTPUT}_ss.tsv
 
-S7_COUNT=$(awk '{print $1}' ${S7_OUTPUT}.tsv | sort | uniq | wc -l)
+S7_COUNT=$(tail -n+2 ${S7_OUTPUT}.tsv | awk '{print $1}' | sort | uniq | wc -l)
 
 
 
@@ -543,7 +543,7 @@ else
 	echo "Skipping ${S8_OUTPUT}.tsv, already exists"
 fi
 
-S8_COUNT=$(awk '{print $1}' ${S8_OUTPUT}.tsv | sort | uniq | wc -l)
+S8_COUNT=$(tail -n+2 ${S8_OUTPUT}.tsv | awk '{print $1}' | sort | uniq | wc -l)
 
 # removing greater than sign from IDs
 if [ ! -e ${S8_OUTPUT}_ngt.tsv ]; then
