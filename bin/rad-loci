@@ -215,7 +215,7 @@ fi;"
 	| awk 'BEGIN{i=1; c=0; lseq=""; d=0; dc=0;} \
 	  {if (lseq!=$2 && lseq!="") {if (c>='$MIN_SEQ_GLOBAL_OCCURS') {print ">"i"_"c"\n"lseq; i++} \
 	   else {d+=c; dc+=1;} c=0} c+=$1; lseq=$2} \
-	  END {if (c>='$MIN_SEQ_GLOBAL_OCCURS') {print ">"i"_"c"\n"lseq;} else {d+=c; dc+=1;} print "Discarded Sequences\n- Unique\t"dc"\n- Total \t"d > "'${S0_OUTPUT}'.discard.count";}' \
+	  END {if (c>='$MIN_SEQ_GLOBAL_OCCURS') {print ">"i"_"c"\n"lseq;} else {d+=c; dc+=1;} print "S0: Discarded Sequences\n- Unique\t"dc"\n- Total \t"d > "'${S0_OUTPUT}'.discard.count";}' \
 	> ${S0_OUTPUT}.fa
 
 	# cleanup
@@ -278,7 +278,7 @@ if [ ! -e ${S2_OUTPUT}.fa ]; then
 		$1 >= '$MIN_MEMBERS' && $1 <= '$MAX_MEMBERS' {print $2"\n"$3} \
 		$1 < '$MIN_MEMBERS' {m+=1; split($2, cc, "_"); mc+=cc[2];} \
 		$1 > '$MAX_MEMBERS' {M+=1;} \
-		END {print "Discarded Clusters\n- <'$MIN_MEMBERS'\t"m"\t"mc"\n- >'$MAX_MEMBERS'\t"M > "'${S2_OUTPUT}'.discard.count"}' \
+		END {print "S2: Discarded Clusters\n- <'$MIN_MEMBERS'\t"m"\t"mc"\n- >'$MAX_MEMBERS'\t"M > "'${S2_OUTPUT}'.discard.count"}' \
 	   > ${S2_OUTPUT}.fa
 else
 	echo "Skipping ${S2_OUTPUT}.fa, already exists"
@@ -343,9 +343,9 @@ if [ ! -e ${S4_OUTPUT}.id ]; then
 			$1 >= '$MIN_MEMBERS' && $1 <= '$MAX_MEMBERS' {print $0} \
 			$1 < '$MIN_MEMBERS' {m+=1} \
 			$1 > '$MAX_MEMBERS' {M+=1} \
-			END {print "Discarded Clusters\n- <'$MIN_MEMBERS'\t"m"\n- >'$MAX_MEMBERS'\t"M > "'${S4_OUTPUT}'.discard.count"}' \
-	| sed 's/_\([0-9]\)*$/ \1/' \
-	| awk '$1 == $5 {print $4}' > \
+			END {print "S4: Discarded Clusters\n- <'$MIN_MEMBERS'\t"m"\n- >'$MAX_MEMBERS'\t"M > "'${S4_OUTPUT}'.discard.count"}' \
+	| sed 's/_\([0-9]*\)$/ \1/' \
+	| awk 'BEGIN {c=0;} $1 == $5 {print $4} $1 != $5 {c+=1;} END {print "- Size change\t"c >>"'${S4_OUTPUT}'.discard.count"}' > \
 	    ${S4_OUTPUT}.id
 else
 	echo "Skipping ${S4_OUTPUT}.id, already exists"
@@ -601,19 +601,19 @@ fi
 ## Summary ##
 echo ""
 echo "[Counts]"
-echo " - Seqs ${MIN_SEQ_GLOBAL_OCCURS}+ copies:         $S0_COUNT"
-echo " - Clusters:                 $S1_COUNT"
-echo " - Clusters of ${MIN_MEMBERS}-${MAX_MEMBERS} members:  $S2_COUNT"
-echo " - Matched Seqs:             $S3_COUNT"
-echo " - Aligned with ${MIN_MEMBERS}-${MAX_MEMBERS} members: $S4A_COUNT ids ($S4B_COUNT seqs)"
-echo " - Total alleles:            ${S5B_COUNT} (from ${S5A_COUNT})"
+echo " - Seqs ${MIN_SEQ_GLOBAL_OCCURS}+ copies:         $S0_COUNT  [s0]"
+echo " - Clusters:                 $S1_COUNT  [s1]"
+echo " - Clusters of ${MIN_MEMBERS}-${MAX_MEMBERS} members:  $S2_COUNT  [s2]"
+echo " - Matched Seqs:             $S3_COUNT  [s3]"
+echo " - Aligned with ${MIN_MEMBERS}-${MAX_MEMBERS} members: $S4A_COUNT ids ($S4B_COUNT seqs)  [s4]"
+echo " - Total alleles:            ${S5B_COUNT} (from ${S5A_COUNT})  [s5]"
 if [ -z "$S6_STATS" ]; then
 	echo " - Samples: were not counted as they were pre-existing"
 else
-	echo -e " - Samples:${S6_STATS}"
+	echo -e " - Samples:${S6_STATS}  [s6]"
 fi
-echo " - Loci:                     ${S7_COUNT}"
-echo " - Filtered loci:            ${S8_COUNT}"
+echo " - Loci:                     ${S7_COUNT}  [s7]"
+echo " - Filtered loci:            ${S8_COUNT}  [s8]"
 echo ""
 
 echo "[Outputs]"
