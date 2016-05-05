@@ -25,19 +25,19 @@ e.g.
 
 ```sh
 # Download the source (and unpack)
-wget https://github.com/molecularbiodiversity/rad-loci/archive/v0.3.tar.gz
-tar xf v0.3.tar.gz
+wget https://github.com/molecularbiodiversity/rad-loci/archive/v0.4.tar.gz
+tar xf v0.4.tar.gz
 
 # Optional: you may want to move the source somewhere else.  If you do you
 # will need to cd to the directory containing it too.
-#mv rad-loci-0.3 /usr/local
+#mv rad-loci-0.4 /usr/local
 #cd /usr/local
 
 # Add to path (you may want to put this in your ~/.bashrc file to you don't
 # need to do it each time).
 # use 'pwd' command to work out your working directory (as you will need to
 # hard-code it if you use the ~/.bashrc option)
-export PATH=$PATH:$PWD/rad-loci-0.3/bin
+export PATH=$PATH:$PWD/rad-loci-0.4/bin
 
 # Check dependencies were ok
 check-dependencies
