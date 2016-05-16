@@ -70,7 +70,7 @@ cd ..
 
 # create settings
 rad-loci-settings settings.conf
-# edit the settings as necessory
+# edit the settings as necessary
 #nano settings.conf
 #vim settings.conf
 
