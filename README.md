@@ -12,7 +12,7 @@ A RADseq pipeline based on a read-cluster approach
 4. Numerous shell tools (awk, basename, bc, bzcat\*, cat, cd, grep, ln, mkdir, paste, pwd, rm
    sed, sort, tail, uniq, wc, zcat\*) \*optional commands
 
-NOTE: there is a command in the bin directory that checks that it can find all necessory 
+NOTE: there is a command in the bin directory that checks that it can find all necessary 
 commands called 'check-dependencies'
 
 ### Rad-loci
